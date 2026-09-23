@@ -16,7 +16,7 @@ API (keyless, no signup, public domain).
 
 ```bash
 git clone <repository-url>
-cd dario-chronic-care-explorer
+cd chronic-care-market-explorer
 python -m venv .venv
 # Windows: .venv\Scripts\activate
 # macOS/Linux: source .venv/bin/activate
