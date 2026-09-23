@@ -2,7 +2,7 @@
 
 | File | What it is |
 |---|---|
-| **[`transcript.md`](transcript.md)** | The full, unedited conversation — every prompt, tool call and result |
+| **[`transcript.md`](transcript.md)** | The full, unedited conversation, every prompt, tool call and result |
 | `export_transcript.py` | The script that renders the transcript from the CLI session log |
 
 **Assistant:** Claude Opus 5, via GitHub Copilot CLI.
@@ -21,7 +21,7 @@ is reproduced in full.
 
 ---
 
-## How AI was used — mapped to the assignment's questions
+## How AI was used, mapped to the assignment's questions
 
 ### 1. Understanding and breaking down the assignment
 
@@ -44,13 +44,13 @@ recalled from memory**:
   `questionid` and stratification codes rather than assuming them. This is how
   the Mental Health topic code was confirmed as `MEN`, not the assumed `MTH`.
 - A sample row was pulled to confirm the feed actually ships confidence limits
-  and suppression footnotes — the properties that make genuine data quality work
+  and suppression footnotes, the properties that make genuine data quality work
   possible rather than cosmetic.
 
 Product direction was then chosen deliberately: rather than a generic "health
 dashboard", the scope was narrowed to nine adult indicators mapping onto the
 four condition pillars a chronic-care company actually sells, and framed around
-one decision — *which market do we enter next*.
+one decision: *which market do we enter next*.
 
 ### 3. Designing the data model and ETL flow
 
@@ -83,17 +83,17 @@ ETL was run end-to-end against the live API *and* in `--offline` replay mode.
 
 Several AI-proposed approaches were rejected or reworked:
 
-- **Raw-value averaging for the burden index** — rejected. Prevalence scales
+- **Raw-value averaging for the burden index**: rejected. Prevalence scales
   differ ~3× across indicators, so obesity would have swamped diabetes.
   Replaced with percentile ranking within indicator-year.
-- **Dropping states with missing components from the score** — rejected. A state
+- **Dropping states with missing components from the score**: rejected. A state
   missing one input would be silently penalised. Replaced with weight
   re-normalisation over available components.
-- **Treating all nulls as missing data** — rejected as factually wrong. CDC
+- **Treating all nulls as missing data**: rejected as factually wrong. CDC
   suppression is deliberate and footnoted; conflating it with parsing loss would
   have produced a misleading DQ report. Split into two separate checks (DQ08,
   DQ09).
-- **Committing the generated data to git** — rejected. It would let a stale copy
+- **Committing the generated data to git**: rejected. It would let a stale copy
   mask a broken pipeline and undermine the clone-and-run flow.
 
 ### 6. Using AI to improve quality, not only generate code

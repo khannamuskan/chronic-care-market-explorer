@@ -100,7 +100,7 @@ def render(events_path: Path) -> str:
         "",
         "Full, unedited conversation for the **Chronic Care Market Prioritization",
         "Explorer** assignment. Rendered directly from the GitHub Copilot CLI",
-        "session event log by `export_transcript.py` — nothing has been curated",
+        "session event log by `export_transcript.py`, nothing has been curated",
         "or removed. Tool outputs are truncated only where noted.",
         "",
         "- **Assistant model:** Claude Opus 5 (GitHub Copilot CLI)",
@@ -120,7 +120,7 @@ def render(events_path: Path) -> str:
 
         if etype == "user.message":
             turn += 1
-            out += [f"## 👤 User — turn {turn}  <sub>{stamp}</sub>", "",
+            out += [f"## 👤 User (turn {turn})  <sub>{stamp}</sub>", "",
                     data.get("content", ""), "", "---", ""]
 
         elif etype == "assistant.message":
@@ -131,7 +131,7 @@ def render(events_path: Path) -> str:
                 name = req.get("name", "?")
                 args = req.get("arguments", {}) or {}
                 summary = req.get("intentionSummary") or args.get("description") or ""
-                out += [f"<details><summary>🔧 <code>{name}</code> — {summary}</summary>", ""]
+                out += [f"<details><summary>🔧 <code>{name}</code>: {summary}</summary>", ""]
                 body = args.get("command") or args.get("query") or args.get("file_text")
                 if body:
                     out += ["```", clip(str(body), MAX_ARG_CHARS), "```", ""]
@@ -145,9 +145,9 @@ def render(events_path: Path) -> str:
             result = unwrap_result(data.get("result"))
             if result:
                 ok = "✅" if data.get("success", True) else "❌"
-                label = f"{ok} Result — <code>{name}</code>"
+                label = f"{ok} Result: <code>{name}</code>"
                 if summary:
-                    label += f" — {summary}"
+                    label += f" ({summary})"
                 out += [f"<details><summary>{label}</summary>", "",
                         "```", clip(result, MAX_RESULT_CHARS), "```", "",
                         "</details>", ""]

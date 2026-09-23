@@ -122,8 +122,8 @@ with st.sidebar:
         config.RANKING_BASES,
         index=config.RANKING_BASES.index(config.DEFAULT_RANKING_BASIS),
         format_func=lambda b: {
-            "rate": "Rate — where need is concentrated",
-            "lives": "Lives — where the people are",
+            "rate": "Rate: where need is concentrated",
+            "lives": "Lives: where the people are",
         }[b],
         label_visibility="collapsed",
     )
@@ -205,7 +205,7 @@ with tab_market:
                   help="Estimated condition-cases across the states in view: each "
                        "prevalence rate multiplied by that state's adult population, "
                        "summed over the tracked conditions. Counts cases, not unique "
-                       "people — an adult with two conditions is counted twice.")
+                       "people. An adult with two conditions is counted twice.")
         c4.metric("Untreated adults", fmt_people(score_f["untreated_adults"].sum()),
                   help="Adults with high blood pressure or high cholesterol who "
                        "report not taking medication for it. The directly "
@@ -320,7 +320,7 @@ with tab_market:
             st.dataframe(mv, width="stretch", hide_index=True)
             st.caption(
                 "A positive shift means the state ranks better on volume than on "
-                "rate — a big population diluting an unremarkable rate. A negative "
+                "rate, a big population diluting an unremarkable rate. A negative "
                 "shift is the reverse: genuinely concentrated need, but not many "
                 "people. Neither is wrong; they answer different questions."
             )
@@ -354,7 +354,7 @@ with tab_market:
                 f"**{', '.join(excluded)}** published no {LATEST_YEAR} estimates for "
                 "these indicators and are excluded from the ranking. BRFSS "
                 "participation is voluntary per state and per module, so this is a "
-                "gap in the source, not in the pipeline — see the Data Quality tab."
+                "gap in the source, not in the pipeline. See the Data Quality tab."
             )
 
 
@@ -384,7 +384,7 @@ with tab_state:
         else:
             c1.info(f"{state} is not in the {LATEST_YEAR} ranking (no data that year).")
 
-        st.markdown(f"#### {state} vs national benchmark — {year}")
+        st.markdown(f"#### {state} vs national benchmark, {year}")
         year_view = sdf[sdf["year"] == year]
         if year_view.empty:
             st.info(f"No {year} estimates published for {state}.")
@@ -455,7 +455,7 @@ with tab_state:
             st.plotly_chart(fig, width="stretch")
             st.caption(
                 "The shaded band is CDC's published 95% confidence interval. Where it "
-                "is wide the estimate rests on a small sample — read movement inside "
+                "is wide the estimate rests on a small sample, so read movement inside "
                 "the band as noise, not signal."
             )
 
@@ -468,7 +468,7 @@ with tab_equity:
     st.caption(
         "A state can sit on the national average overall while one demographic "
         "group runs 15+ points above another. Those concentrated pockets of unmet "
-        "need are usually the most addressable — and the most fundable."
+        "need are usually the most addressable, and the most fundable."
     )
 
     eq = equity_gap[
@@ -513,7 +513,7 @@ with tab_equity:
 
             worst = sub.nlargest(1, "gap_pp").iloc[0]
             st.info(
-                f"**Widest {category.lower()} gap:** {worst['location_name']} — "
+                f"**Widest {category.lower()} gap:** {worst['location_name']}: "
                 f"{worst['gap_pp']:.1f} pp between {worst['lowest_group']} "
                 f"({worst['min_value']:.1f}%) and {worst['highest_group']} "
                 f"({worst['max_value']:.1f}%). Most burdened group: "
@@ -532,7 +532,7 @@ with tab_equity:
     st.divider()
     st.markdown("#### Care gap: burden vs treatment")
     st.caption(
-        "The most actionable market is the bottom-right quadrant — high disease "
+        "The most actionable market is the bottom-right quadrant: high disease "
         "burden combined with a high share of diagnosed patients not on medication."
     )
     if score_f.empty:
@@ -569,7 +569,7 @@ with tab_dq:
         if dq_summary["blocking_failures"]:
             st.error(
                 "Blocking failures: " + ", ".join(dq_summary["blocking_failures"])
-                + " — the ETL exits non-zero so a scheduler can alert on it."
+                + ". The ETL exits non-zero so a scheduler can alert on it."
             )
 
     view = dq_results.copy()
@@ -589,7 +589,7 @@ with tab_dq:
     st.markdown("#### Suppression: what CDC withholds, and where")
     st.caption(
         "CDC blanks any estimate whose sample is too small to be reliable. It is "
-        "expected behaviour, but it is not uniform — suppression clusters in small "
+        "expected behaviour, but it is not uniform, and suppression clusters in small "
         "states and in smaller race/ethnicity groups, which is precisely where the "
         "equity analysis needs data. Knowing the shape of the hole matters."
     )
@@ -632,7 +632,7 @@ with tab_dq:
         with st.expander("Failing-row samples captured by each check"):
             for d in dq_summary["details"]:
                 if d["status"] == "FAIL" and d.get("sample"):
-                    st.markdown(f"**{d['check_id']} — {d['name']}**")
+                    st.markdown(f"**{d['check_id']}: {d['name']}**")
                     st.dataframe(pd.DataFrame(d["sample"]),
                                  width="stretch", hide_index=True)
 
@@ -670,7 +670,7 @@ rather than raw values keeps indicators with different natural scales
 | **Equity gap** | 20% | Mean within-state spread across race/ethnicity groups |
 | **Untreated care gap** | 15% | Diagnosed patients reporting no medication |
 
-Weights are adjustable in the sidebar — the components are persisted, so
+Weights are adjustable in the sidebar. The components are persisted, so
 re-weighting reshuffles the ranking without re-running the ETL. Where a state
 is missing a component, the remaining weights are re-normalised so it is not
 silently penalised.
@@ -684,8 +684,8 @@ most affected people*. The sidebar switches between the two.
 
 | Basis | Ranks on | Favours |
 |---|---|---|
-| **Rate** | Opportunity Score | Small states — the efficiency view |
-| **Lives** | Opportunity Score x condition caseload | Large states — the volume view |
+| **Rate** | Opportunity Score | Small states, the efficiency view |
+| **Lives** | Opportunity Score x condition caseload | Large states, the volume view |
 
 **Condition caseload** is the sum over burden indicators of
 (prevalence % x adult population). It counts **condition-cases, not unique
@@ -695,7 +695,7 @@ count, and BRFSS publishes no comorbidity cross-tabs from which one could be
 derived.
 
 The denominator is the **civilian population aged 18+**, because BRFSS only
-interviews adults — using total population would inflate every headcount by
+interviews adults. Using total population would inflate every headcount by
 roughly the 22% of Americans never eligible to be surveyed.
 
 #### Data model

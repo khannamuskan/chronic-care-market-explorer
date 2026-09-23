@@ -3,7 +3,7 @@
 [![CI](https://github.com/khannamuskan/chronic-care-market-explorer/actions/workflows/ci.yml/badge.svg)](https://github.com/khannamuskan/chronic-care-market-explorer/actions/workflows/ci.yml)
 
 An end-to-end data product that ranks US states on **where a digital chronic-care
-company should deploy next** — blending disease burden, trajectory, health-equity
+company should deploy next**, blending disease burden, trajectory, health-equity
 gaps, untreated patients and **market size** across diabetes, cardiovascular,
 weight and behavioral health.
 
@@ -32,15 +32,15 @@ processed table to `data/processed/`. `streamlit run app.py` then opens on
 
 | Extra flag | What it does |
 |---|---|
-| `python etl.py --offline` | Rebuilds everything from the cached raw snapshot in `data/raw/` — no network needed |
+| `python etl.py --offline` | Rebuilds everything from the cached raw snapshot in `data/raw/` (no network needed) |
 | `python etl.py --allow-dq-failures` | Exits 0 even when a blocking data quality check fails |
 | `python etl.py --verbose` | Debug logging |
 | `pytest tests -q` | Runs the 72-test suite (no network required) |
-| `python scripts/refresh_population.py` | Rebuilds the committed Census population reference (rarely needed — see §3) |
+| `python scripts/refresh_population.py` | Rebuilds the committed Census population reference (rarely needed, see §3) |
 
 > **Optional:** a free [Socrata app token](https://evergreen.data.socrata.com/signup)
 > raises the anonymous rate limit. Set `SOCRATA_APP_TOKEN` if you hit throttling.
-> **It is not required** — the pipeline runs fully unauthenticated.
+> **It is not required.** The pipeline runs fully unauthenticated.
 
 ---
 
@@ -59,7 +59,7 @@ growing or about who is being missed. This app blends four signals instead.
 
 ### The Opportunity Score
 
-Each component is percentile-ranked 0–100 across states, then blended.
+Each component is percentile-ranked 0 to 100 across states, then blended.
 Ranking rather than raw values stops indicators with different natural scales
 (diabetes ≈ 11%, obesity ≈ 35%) from dominating one another.
 
@@ -72,7 +72,7 @@ Ranking rather than raw values stops indicators with different natural scales
 
 Weights are **adjustable live in the sidebar**. The component ranks are
 persisted by the ETL, so re-weighting reshuffles the ranking instantly without
-re-running the pipeline — the scoring logic stays inspectable rather than a
+re-running the pipeline. The scoring logic stays inspectable rather than a
 black box.
 
 Where a state is missing a component, the remaining weights are **re-normalised**
@@ -80,18 +80,18 @@ so it is not silently penalised for a source gap.
 
 ### Rate or lives: two rankings, not one
 
-A score built from rates answers *where is need most concentrated* — and it
+A score built from rates answers *where is need most concentrated*, and it
 systematically favours small states. Multiplying those rates by each state's
 adult population answers a different and equally valid question: *where are the
 most affected people*. The app ranks both ways and shows where they disagree.
 
 | Basis | Ranks on | Reads as | Favours |
 |---|---|---|---|
-| **Rate** | Opportunity Score | Efficiency — best conditions per patient reached | Small states |
-| **Lives** | Opportunity Score × condition caseload | Volume — total reachable population | Large states |
+| **Rate** | Opportunity Score | Efficiency: best conditions per patient reached | Small states |
+| **Lives** | Opportunity Score × condition caseload | Volume: total reachable population | Large states |
 
 `condition caseload` = Σ over burden indicators of (prevalence % × adult
-population). It counts **condition-cases, not unique people** — an adult with
+population). It counts **condition-cases, not unique people**: an adult with
 both diabetes and hypertension is counted twice. That is the correct unit for a
 company that sells and delivers programmes *per condition*, but it is never
 labelled "people" anywhere in the app.
@@ -102,11 +102,11 @@ by roughly the 22% of Americans who were never eligible to be surveyed.
 
 ### Selected findings (2023 data, default weights)
 
-- **Ohio ranks #1 by rate and #4 by lives** — the only state in the top 5 of
+- **Ohio ranks #1 by rate and #4 by lives**, the only state in the top 5 of
   both. High burden (76th percentile), a worsening trend, a 16pp race gap, and
   16.9M condition-cases. It is the one recommendation that survives either
   commercial thesis.
-- **Oregon ranks #2 on a middling burden index (46)** — driven almost entirely
+- **Oregon ranks #2 on a middling burden index (46)**, driven almost entirely
   by the worst untreated rate in the country (57% of diagnosed adults not on
   medication). A pure prevalence ranking would have missed it completely.
 - **The two lenses disagree violently: 18 of 49 states move 10+ places.**
@@ -114,18 +114,18 @@ by roughly the 22% of Americans who were never eligible to be surveyed.
   **38th by lives**. Publishing only the rate ranking would have quietly
   recommended Delaware over New York.
 - **80.8M US adults** report high blood pressure or high cholesterol without
-  taking medication for it — the directly addressable population for an
+  taking medication for it. That is the directly addressable population for an
   adherence programme.
 - **Mississippi has a 19.9pp race gap in diabetes** (12.8% → 32.7%), the widest
   in the dataset.
 - **Kentucky and Pennsylvania published no 2023 data at all** and are excluded
-  from the ranking — surfaced explicitly in the app rather than silently dropped.
+  from the ranking. They are surfaced explicitly, not silently dropped.
 
 ---
 
 ## 2. The API
 
-**CDC Chronic Disease Indicators (CDI)** — `https://data.cdc.gov/resource/hksd-2xuw.json`
+**CDC Chronic Disease Indicators (CDI)**: `https://data.cdc.gov/resource/hksd-2xuw.json`
 
 - Keyless, public domain, no signup, no reviewer-provided secrets.
 - ~470,000 records; US state × indicator × year × demographic stratum.
@@ -186,7 +186,7 @@ scripts/refresh_population.py          run deliberately, not per-ETL
 
 ### Why the population reference is committed, not fetched
 
-Market sizing needs a denominator, and the obvious source — the Census API —
+Market sizing needs a denominator, and the obvious source (the Census API)
 **now requires a registered key**. Adding it would have broken the
 "clone it and run it, no credentials" guarantee the whole submission rests on.
 
@@ -210,14 +210,14 @@ exactly that reason.
 ### Why a star schema
 
 The CDI feed is a tall "one row per estimate" file with 30+ heavily redundant
-columns — every row repeats the full location name, question text and
+columns. Every row repeats the full location name, question text and
 stratification labels. Splitting it into conformed dimensions keeps the fact
 narrow, makes the app's filters cheap, and creates real referential-integrity
 checks to run (`DQ10`).
 
 ### Why both Parquet and DuckDB
 
-Parquet is the portable artefact — a reviewer can open any table with pandas
+Parquet is the portable artefact, so a reviewer can open any table with pandas
 alone. DuckDB gives the same tables a SQL surface with no server:
 
 ```python
@@ -266,7 +266,7 @@ Interactivity: survey year, condition pillars, census region, **ranking basis
 ## 5. Data quality and validation
 
 15 checks across six dimensions. Each one targets a failure mode that **actually
-exists in this feed** — none are decorative.
+exists in this feed**, and none are decorative.
 
 | ID | Check | Dimension | Severity |
 |---|---|---|---|
@@ -274,7 +274,7 @@ exists in this feed** — none are decorative.
 | DQ02 | All modelled columns present | consistency | ERROR |
 | DQ03 | Business keys populated | completeness | ERROR |
 | DQ04 | One row per declared grain | uniqueness | ERROR |
-| DQ05 | Prevalence within 0–100% | validity | ERROR |
+| DQ05 | Prevalence within 0 to 100% | validity | ERROR |
 | DQ06 | Confidence bounds ordered (`ci_low ≤ ci_high`) | validity | ERROR |
 | DQ07 | Point estimate sits inside its own interval | accuracy | WARNING |
 | DQ08 | CDC suppression rate within tolerance | completeness | WARNING → ERROR >35% |
@@ -290,18 +290,18 @@ exists in this feed** — none are decorative.
 
 **DQ08 vs DQ09.** CDC blanks any estimate whose sample is too small to be
 reliable and stamps a footnote on it. That is *their* deliberate suppression and
-it is expected — currently **25% of rows**, which trips the 20% warning
+it is expected, currently **25% of rows**, which trips the 20% warning
 threshold by design so it stays visible. A null **without** a footnote is a
 different animal entirely: that would be *our* parsing loss. The pipeline
 separates the two and only the second is treated as a defect.
 
 This matters commercially: suppression is **not random**. It clusters in small
-states and small race/ethnicity groups — precisely where the equity analysis
+states and small race/ethnicity groups, precisely where the equity analysis
 needs data. The Data Quality tab maps exactly where the holes are so a
 stakeholder does not read a missing gap as a nonexistent one.
 
 **Why DQ15 is an ERROR.** A missing population row does not produce a wrong
-number, it produces a *blank* one — and a blank in a market-size column reads as
+number, it produces a *blank* one, and a blank in a market-size column reads as
 "small market" to anyone skimming the table. Absence that looks like evidence is
 worse than a loud failure, so it blocks the run.
 
@@ -331,7 +331,7 @@ pytest tests -q     # 72 passed
 ```
 
 Every data quality test injects a specific defect and asserts the matching check
-catches it — a check that cannot fail is not a check.
+catches it. A check that cannot fail is not a check.
 
 **GitHub Actions** (`.github/workflows/ci.yml`) runs two jobs:
 
@@ -342,7 +342,7 @@ catches it — a check that cannot fail is not a check.
 
 The live job is deliberately **kept off pull requests**: a third-party endpoint
 having a bad minute must never turn an unrelated change red. Running it weekly
-turns upstream drift — a re-coded `questionid`, a withdrawn dataset — into a
+turns upstream drift (a re-coded `questionid`, a withdrawn dataset) into a
 failing build instead of a wrong number nobody noticed.
 
 ---
@@ -378,7 +378,7 @@ failing build instead of a wrong number nobody noticed.
 - **Equity gaps are biased toward measurable groups.** Small populations are
   suppressed, so the true widest gap may be invisible in exactly the states
   that need it most.
-- **The trend slope spans COVID.** 2020–2021 BRFSS collection was disrupted;
+- **The trend slope spans COVID.** 2020-2021 BRFSS collection was disrupted;
   slopes through that window are noisier than they look.
 - **No significance testing on gaps.** A 3pp gap with overlapping confidence
   intervals is presented the same as a statistically robust one. The app greys
@@ -402,7 +402,7 @@ failing build instead of a wrong number nobody noticed.
 4. **Move the DQ suite to Great Expectations or Soda** for a standard artefact
    and historical DQ trending, rather than a bespoke framework.
 5. **Add a second, independent source** (CMS spending, county-level PLACES) to
-   triangulate — single-source products are fragile.
+   triangulate. Single-source products are fragile.
 6. **County-level granularity** via CDC PLACES, since health-plan contracting
    happens well below state level.
 7. **Orchestration** (Dagster/Airflow) with asset lineage and alerting on the
@@ -438,17 +438,17 @@ things that materially shaped the solution:
   Caught by running the pipeline, fixed by resetting the index first.
 - The first scorecard silently dropped Kentucky and Pennsylvania (49 states, not
   51). Rather than accepting the number, I traced it to genuinely absent 2023
-  BRFSS data and changed the design to **name the excluded states in the UI** —
+  BRFSS data and changed the design to **name the excluded states in the UI**;
   a silent drop in a league table is a correctness bug.
 - Deprecated Streamlit `use_container_width` usage, replaced with the current
   `width=` API.
-- Non-contiguous data quality check IDs (DQ11/DQ12 were skipped) — a cosmetic
+- Non-contiguous data quality check IDs (DQ11/DQ12 were skipped), a cosmetic
   issue, but it would have made the DQ table confusing to a reviewer.
 - The first attempt at market sizing multiplied prevalence by **total** state
   population. BRFSS only surveys adults, so that inflated every headcount by
   roughly 22%. The denominator was changed to the civilian 18+ population.
 - The Census **API** was the obvious source for population, but it now requires
-  a registered key — which would have broken the keyless clone-and-run promise.
+  a registered key, which would have broken the keyless clone-and-run promise.
   Switching to Census's static published CSVs preserved it.
 
 **Judgement applied against AI suggestions**
@@ -457,7 +457,7 @@ things that materially shaped the solution:
   all 19 CDI topics. A focused product beats a data dump.
 - Rejected raw-value averaging for the burden index in favour of percentile
   ranking, because prevalence scales differ by 3× across indicators.
-- Insisted the score components be **persisted** so the app can re-weight live —
+- Insisted the score components be **persisted** so the app can re-weight live,
   making the methodology auditable instead of a black box.
 - Required that every DQ test inject a real defect and assert the check catches
   it, rather than only testing the happy path.
@@ -493,7 +493,7 @@ ai_transcript/          Full AI conversation transcript
 logs/                   ETL run logs
 ```
 
-`data/` and `logs/` contents are gitignored — they are fully regenerated by
+`data/` and `logs/` contents are gitignored. They are fully regenerated by
 `python etl.py`, which is what keeps the clone-and-run flow honest. `reference/`
 is the deliberate exception and **is** committed, for the reasons in §3.
 
@@ -504,7 +504,7 @@ is the deliberate exception and **is** committed, for the reasons in §3.
 - **CDC Chronic Disease Indicators**, U.S. Centers for Disease Control and
   Prevention. Public domain, retrieved without authentication from
   [data.cdc.gov](https://data.cdc.gov/Chronic-Disease-Indicators/U-S-Chronic-Disease-Indicators/hksd-2xuw).
-- **U.S. Census Bureau**, Population Estimates Program, Vintage 2024 — civilian
+- **U.S. Census Bureau**, Population Estimates Program, Vintage 2024, civilian
   population by single year of age. Public domain, retrieved from the Bureau's
   published static estimate files (no API key).
 
