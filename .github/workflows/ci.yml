@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly, so upstream drift is detected by a failing build rather than by
+    # someone noticing a wrong number in the dashboard.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Fast, hermetic, and the gate for every change: no network, no API.
+  # ---------------------------------------------------------------------
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Verify the app imports and renders without data
+        # A reviewer who runs `streamlit run app.py` before `python etl.py`
+        # must get a clear instruction, not a traceback. This asserts that
+        # the no-data path stays graceful.
+        run: |
+          python - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          at = AppTest.from_file("app.py", default_timeout=120).run()
+          assert not at.exception, [e.value for e in at.exception]
+          print("app renders cleanly with no processed data present")
+          PY
+
+  # ---------------------------------------------------------------------
+  # Hits the live CDC API. Scheduled only -- it must never make an ordinary
+  # pull request red because a third-party endpoint had a bad minute.
+  # ---------------------------------------------------------------------
+  live-pipeline:
+    name: Live ETL against the CDC API
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run the full ETL
+        # Data quality warnings (CDC suppression, flagged outliers) are
+        # expected and documented; only blocking ERROR checks should fail CI,
+        # which is exactly what a non-zero exit from etl.py means.
+        run: python etl.py
+
+      - name: Publish the run manifest and data quality report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: etl-run-report
+          path: |
+            data/processed/run_manifest.json
+            data/processed/dq_summary.json
+            logs/etl.log
+          if-no-files-found: warn

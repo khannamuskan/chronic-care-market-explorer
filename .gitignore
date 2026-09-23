@@ -31,3 +31,6 @@ logs/*
 Thumbs.db
 .vscode/
 .idea/
+
+# Personal working notes, not part of the deliverable
+HANDOFF.md

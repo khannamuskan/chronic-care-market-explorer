@@ -69,6 +69,18 @@ def fmt_pct(v: float | None, dp: int = 1) -> str:
     return "n/a" if v is None or pd.isna(v) else f"{v:.{dp}f}%"
 
 
+def fmt_people(v: float | None) -> str:
+    """Headcounts are read at a glance, so scale them rather than print 8 digits."""
+    if v is None or pd.isna(v):
+        return "n/a"
+    v = float(v)
+    if abs(v) >= 1_000_000:
+        return f"{v / 1_000_000:.1f}M"
+    if abs(v) >= 1_000:
+        return f"{v / 1_000:.0f}K"
+    return f"{v:,.0f}"
+
+
 def download(df: pd.DataFrame, label: str, name: str) -> None:
     st.download_button(
         label, df.to_csv(index=False).encode("utf-8"), file_name=name,
@@ -104,6 +116,25 @@ with st.sidebar:
     regions = st.multiselect("Census region", region_options, default=region_options)
 
     st.divider()
+    st.markdown("**Ranking basis**")
+    basis = st.radio(
+        "Rank states by",
+        config.RANKING_BASES,
+        index=config.RANKING_BASES.index(config.DEFAULT_RANKING_BASIS),
+        format_func=lambda b: {
+            "rate": "Rate — where need is concentrated",
+            "lives": "Lives — where the people are",
+        }[b],
+        label_visibility="collapsed",
+    )
+    st.caption(
+        "**Rate** ranks on the Opportunity Score alone, so small states can top "
+        "the list. **Lives** weights that score by the number of condition-cases "
+        "in the state. Both are defensible; they disagree sharply, and the "
+        "disagreement is shown below the ranking."
+    )
+
+    st.divider()
     st.markdown("**Opportunity Score weights**")
     st.caption(
         "The score is a weighted blend of four percentile-ranked components. "
@@ -130,7 +161,11 @@ with st.sidebar:
     if manifest:
         st.caption(f"ETL run: {manifest['run_completed_at']}")
 
-scorecard = analytics.rescore(scorecard_base, w)
+scorecard = analytics.rescore(scorecard_base, w, basis)
+
+# The column the ranking is actually sorted on, plus how to present it.
+SCORE_COL = "opportunity_score" if basis == "rate" else "opportunity_adults"
+SCORE_LABEL = "Opportunity Score" if basis == "rate" else "Opportunity-weighted caseload"
 
 # Filtered views used across tabs.
 ind_f = indicator_mart[
@@ -162,48 +197,65 @@ with tab_market:
         st.info("No states match the current filters.")
     else:
         top = score_f.iloc[0]
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("States ranked", len(score_f), help=f"Scored on {LATEST_YEAR} data")
-        c2.metric("Top target", f"{top['location_name']}",
+        c2.metric(f"Top target · by {basis}", f"{top['location_name']}",
                   f"score {top['opportunity_score']:.1f}")
-        c3.metric("Median untreated rate", fmt_pct(score_f["untreated_pct"].median()),
-                  help="Adults diagnosed with high BP or high cholesterol who report "
-                       "not taking medication for it.")
-        c4.metric("Median race gap", f"{score_f['mean_race_gap_pp'].median():.1f} pp",
+        c3.metric("Condition caseload", fmt_people(score_f["condition_caseload"].sum()),
+                  help="Estimated condition-cases across the states in view: each "
+                       "prevalence rate multiplied by that state's adult population, "
+                       "summed over the tracked conditions. Counts cases, not unique "
+                       "people — an adult with two conditions is counted twice.")
+        c4.metric("Untreated adults", fmt_people(score_f["untreated_adults"].sum()),
+                  help="Adults with high blood pressure or high cholesterol who "
+                       "report not taking medication for it. The directly "
+                       "addressable population for a medication-adherence programme.")
+        c5.metric("Median race gap", f"{score_f['mean_race_gap_pp'].median():.1f} pp",
                   help="Average within-state spread between the highest and lowest "
                        "race/ethnicity group across burden indicators.")
 
-        st.markdown("#### Opportunity Score by state")
+        st.markdown(f"#### {SCORE_LABEL} by state")
         map_col, bar_col = st.columns([1.35, 1])
         with map_col:
             fig = px.choropleth(
                 score_f, locations="location_abbr", locationmode="USA-states",
-                color="opportunity_score", scope="usa",
-                color_continuous_scale=SEQ, range_color=(0, 100),
+                color=SCORE_COL, scope="usa",
+                color_continuous_scale=SEQ,
+                range_color=(0, 100) if basis == "rate" else None,
                 hover_name="location_name",
                 hover_data={
                     "opportunity_score": ":.1f", "burden_index": ":.1f",
                     "untreated_pct": ":.1f", "mean_race_gap_pp": ":.1f",
+                    "condition_caseload": ":,.0f",
                     "location_abbr": False,
                 },
-                labels={"opportunity_score": "Opportunity"},
+                labels={"opportunity_score": "Opportunity",
+                        "opportunity_adults": "Opportunity-weighted caseload",
+                        "condition_caseload": "Condition caseload"},
             )
             fig.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=430,
-                              coloraxis_colorbar=dict(title="Score"))
+                              coloraxis_colorbar=dict(
+                                  title="Score" if basis == "rate" else "Cases"))
             st.plotly_chart(fig, width="stretch")
 
         with bar_col:
-            top10 = score_f.head(10).sort_values("opportunity_score")
+            top10 = score_f.head(10).sort_values(SCORE_COL)
             fig = px.bar(
-                top10, x="opportunity_score", y="location_name", orientation="h",
-                color="opportunity_score", color_continuous_scale=SEQ,
-                range_color=(0, 100), text="opportunity_score",
+                top10, x=SCORE_COL, y="location_name", orientation="h",
+                color=SCORE_COL, color_continuous_scale=SEQ,
+                range_color=(0, 100) if basis == "rate" else None,
+                text=SCORE_COL,
             )
-            fig.update_traces(texttemplate="%{text:.0f}", textposition="outside")
+            if basis == "rate":
+                fig.update_traces(texttemplate="%{text:.0f}", textposition="outside")
+                xaxis_range = [0, 108]
+            else:
+                fig.update_traces(texttemplate="%{text:.3s}", textposition="outside")
+                xaxis_range = [0, float(top10[SCORE_COL].max()) * 1.18]
             fig.update_layout(
                 margin=dict(l=0, r=10, t=10, b=0), height=430, showlegend=False,
-                coloraxis_showscale=False, xaxis_title="Opportunity Score",
-                yaxis_title="", xaxis_range=[0, 108],
+                coloraxis_showscale=False, xaxis_title=SCORE_LABEL,
+                yaxis_title="", xaxis_range=xaxis_range,
             )
             st.plotly_chart(fig, width="stretch")
 
@@ -225,14 +277,67 @@ with tab_market:
                           xaxis_title="", yaxis_title="")
         st.plotly_chart(fig, width="stretch")
 
+        st.markdown("#### Concentration vs scale")
+        st.caption(
+            "Rate and lives are both defensible readings of the same data, and "
+            "they disagree. A state high on both axes is rare and is the only "
+            "kind of market that survives either thesis."
+        )
+        sc = score_f.dropna(subset=["condition_caseload"]).copy()
+        if sc.empty:
+            st.info("No population denominator available for the states in view.")
+        else:
+            fig = px.scatter(
+                sc, x="condition_caseload", y="opportunity_score",
+                size="untreated_adults", color="census_region",
+                hover_name="location_name", log_x=True, size_max=38,
+                labels={
+                    "condition_caseload": "Condition caseload (log scale)",
+                    "opportunity_score": "Opportunity Score",
+                    "census_region": "Region",
+                },
+                text="location_abbr",
+            )
+            fig.update_traces(textposition="top center",
+                              textfont=dict(size=9, color="#555"))
+            fig.add_hline(y=float(sc["opportunity_score"].median()),
+                          line_dash="dot", line_color="#999")
+            fig.add_vline(x=float(sc["condition_caseload"].median()),
+                          line_dash="dot", line_color="#999")
+            fig.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=430,
+                              legend_title_text="Region")
+            st.plotly_chart(fig, width="stretch")
+
+            movers = sc.reindex(
+                sc["rank_shift"].abs().sort_values(ascending=False).index
+            ).head(6)
+            mv = movers[["location_name", "rank_rate", "rank_lives", "rank_shift",
+                         "condition_caseload"]].copy()
+            mv["condition_caseload"] = mv["condition_caseload"].map(fmt_people)
+            mv.columns = ["State", "Rank by rate", "Rank by lives",
+                          "Shift", "Caseload"]
+            st.caption("**Where the two lenses disagree most**")
+            st.dataframe(mv, width="stretch", hide_index=True)
+            st.caption(
+                "A positive shift means the state ranks better on volume than on "
+                "rate — a big population diluting an unremarkable rate. A negative "
+                "shift is the reverse: genuinely concentrated need, but not many "
+                "people. Neither is wrong; they answer different questions."
+            )
+
         with st.expander("Full scorecard table"):
             show = score_f[[
                 "rank", "location_abbr", "location_name", "census_region",
-                "opportunity_score", "burden_index", "mean_prevalence",
+                "opportunity_score", "adult_population", "condition_caseload",
+                "untreated_adults", "rank_rate", "rank_lives",
+                "burden_index", "mean_prevalence",
                 "prevalence_trend_pp_per_year", "mean_race_gap_pp", "untreated_pct",
             ]].rename(columns={
                 "rank": "Rank", "location_abbr": "ST", "location_name": "State",
                 "census_region": "Region", "opportunity_score": "Opportunity",
+                "adult_population": "Adults 18+", "condition_caseload": "Caseload",
+                "untreated_adults": "Untreated adults",
+                "rank_rate": "Rank (rate)", "rank_lives": "Rank (lives)",
                 "burden_index": "Burden index", "mean_prevalence": "Mean prevalence %",
                 "prevalence_trend_pp_per_year": "Trend pp/yr",
                 "mean_race_gap_pp": "Race gap pp", "untreated_pct": "Untreated %",
@@ -570,6 +675,29 @@ re-weighting reshuffles the ranking without re-running the ETL. Where a state
 is missing a component, the remaining weights are re-normalised so it is not
 silently penalised.
 
+#### Market sizing: rate vs lives
+
+A score built from rates answers *where need is most concentrated*, and it
+systematically favours small states. Multiplying those rates by each state's
+adult population answers a different, equally valid question: *where are the
+most affected people*. The sidebar switches between the two.
+
+| Basis | Ranks on | Favours |
+|---|---|---|
+| **Rate** | Opportunity Score | Small states — the efficiency view |
+| **Lives** | Opportunity Score x condition caseload | Large states — the volume view |
+
+**Condition caseload** is the sum over burden indicators of
+(prevalence % x adult population). It counts **condition-cases, not unique
+people**: an adult with both diabetes and hypertension is counted twice. That
+is the right unit for programmes sold per condition, but it is not a patient
+count, and BRFSS publishes no comorbidity cross-tabs from which one could be
+derived.
+
+The denominator is the **civilian population aged 18+**, because BRFSS only
+interviews adults — using total population would inflate every headcount by
+roughly the 22% of Americans never eligible to be surveyed.
+
 #### Data model
 
 A star schema, built because the source is a tall "one row per estimate" feed
@@ -597,13 +725,27 @@ queried with SQL.
 - **Suppression is not random.** It concentrates in small states and small
   demographic groups, which biases equity gaps toward the groups large enough
   to measure. The Data Quality tab shows exactly where the holes are.
-- **No population weighting.** The score ranks states by rate, not by absolute
-  addressable lives. Joining Census population would change the ranking
-  materially and is the first thing to add next.
+- **Caseload counts cases, not people.** See the market-sizing note above; the
+  figure must never be read as a count of distinct patients.
 - **Correlation, not attribution.** A high score signals unmet need, not proven
   programme ROI.
         """
     )
+
+    pop_meta = (manifest or {}).get("analytics", {})
+    if pop_meta:
+        st.caption(
+            f"Population denominator: {pop_meta.get('population_source', 'n/a')}, "
+            f"{pop_meta.get('population_year', 'n/a')} vintage."
+        )
+        if pop_meta.get("population_year_matches_scoring_year") is False:
+            st.warning(
+                f"The ranking scores **{LATEST_YEAR}** survey data against a "
+                f"**{pop_meta.get('population_year')}** population denominator. "
+                "Headcounts are therefore approximate. Re-run "
+                "`python scripts/refresh_population.py` against a matching "
+                "vintage to close the gap."
+            )
 
     st.markdown("#### Indicators in scope")
     st.dataframe(

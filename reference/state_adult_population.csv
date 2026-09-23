@@ -1,0 +1,57 @@
+# Adult (18+) civilian population by state, 2023
+# source: U.S. Census Bureau, Population Estimates Program, Vintage 2024 (civilian population by single year of age, 18+)
+# url: https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/state/asrh/sc-est2024-agesex-civ.csv
+# derivation: POPEST2023_CIV summed over AGE >= 18, SEX = 0
+# generated: 2026-09-23 by scripts/refresh_population.py
+location_id,location_desc,adult_population
+01,Alabama,3972413
+02,Alaska,538986
+04,Arizona,5863839
+05,Arkansas,2360063
+06,California,30562950
+08,Colorado,4646021
+09,Connecticut,2910198
+10,Delaware,819826
+11,District of Columbia,555805
+12,Florida,18393658
+13,Georgia,8458615
+15,Hawaii,1106160
+16,Idaho,1498746
+17,Illinois,9900040
+18,Indiana,5287526
+19,Iowa,2485967
+20,Kansas,2234211
+21,Kentucky,3510578
+22,Louisiana,3501411
+23,Maine,1149336
+24,Maryland,4814977
+25,Massachusetts,5709296
+26,Michigan,7959512
+27,Minnesota,4447900
+28,Mississippi,2251037
+29,Missouri,4815119
+30,Montana,892834
+31,Nebraska,1497285
+32,Nevada,2512239
+33,New Hampshire,1149580
+34,New Jersey,7337541
+35,New Mexico,1653960
+36,New York,15726300
+37,North Carolina,8432450
+38,North Dakota,596458
+39,Ohio,9230171
+40,Oklahoma,3075653
+41,Oregon,3417527
+42,Pennsylvania,10373602
+44,Rhode Island,894508
+45,South Carolina,4202240
+46,South Dakota,693640
+47,Tennessee,5549627
+48,Texas,23000909
+49,Utah,2500030
+50,Vermont,533757
+51,Virginia,6748417
+53,Washington,6151636
+54,West Virginia,1418444
+55,Wisconsin,4675938
+56,Wyoming,452880

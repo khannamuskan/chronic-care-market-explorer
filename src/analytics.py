@@ -21,7 +21,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from . import config
+from . import config, population
 from .transform import TransformResult
 
 logger = logging.getLogger(__name__)
@@ -45,6 +45,76 @@ def _slope_per_year(frame: pd.DataFrame, x: str = "year", y: str = "value") -> f
     if len(d) < 3 or d[x].nunique() < 3:
         return float("nan")
     return float(np.polyfit(d[x].astype(float), d[y].astype(float), 1)[0])
+
+
+# The pillar the care-gap indicators belong to, derived rather than hardcoded so
+# that changing the indicator scope in config.py cannot leave this out of step.
+CARDIO_PILLAR: str = next(
+    i.pillar for i in config.INDICATORS if i.measure_role == "care_gap"
+)
+
+
+def _rank_desc(s: pd.Series) -> pd.Series:
+    return s.rank(ascending=False, method="min").astype("Int64")
+
+
+def apply_rankings(score: pd.DataFrame, basis: str | None = None) -> pd.DataFrame:
+    """Attach both ranking bases and sort by the requested one.
+
+    Two defensible answers to "which state is the best market" exist, and they
+    disagree:
+
+    ``rate``   rank by Opportunity Score -- where need is most *concentrated*.
+               Favours small states, and is the right lens for a pilot.
+    ``lives``  rank by opportunity-weighted caseload -- where the most affected
+               people actually *are*. Favours large states, and is the right
+               lens for revenue.
+
+    Both are always computed, and ``rank_shift`` exposes the disagreement,
+    because a state that is top-5 on one and mid-table on the other is a more
+    interesting finding than either ranking alone.
+    """
+    basis = basis or config.DEFAULT_RANKING_BASIS
+    if basis not in config.RANKING_BASES:
+        raise ValueError(f"Unknown ranking basis {basis!r}; expected {config.RANKING_BASES}")
+
+    out = score.copy()
+    if out.empty:
+        return out
+
+    # Population-derived columns are absent if the reference could not be
+    # joined. Degrade to a rate-only ranking rather than raising, but refuse to
+    # *pretend* a lives ranking exists -- a silently empty volume ranking would
+    # be read as "no big markets".
+    for col in ("condition_caseload", "cardio_caseload", "untreated_pct"):
+        if col not in out.columns:
+            out[col] = pd.NA
+
+    caseload = out["condition_caseload"].astype("Float64")
+    out["untreated_adults"] = (
+        out["cardio_caseload"].astype("Float64")
+        * out["untreated_pct"].astype("Float64") / 100.0
+    ).round(0)
+    # Discount raw volume by how attractive the market looks, so this is not
+    # just a population ranking wearing a different hat.
+    out["opportunity_adults"] = (out["opportunity_score"] / 100.0 * caseload).round(0)
+
+    out["rank_rate"] = _rank_desc(out["opportunity_score"])
+    out["rank_lives"] = _rank_desc(out["opportunity_adults"])
+    # Positive => the state ranks better on volume than on rate.
+    out["rank_shift"] = out["rank_rate"] - out["rank_lives"]
+
+    if basis == "lives" and out["opportunity_adults"].isna().all():
+        raise ValueError(
+            "Cannot rank by lives: no population denominator is available. "
+            "Run `python scripts/refresh_population.py`."
+        )
+
+    sort_col = "opportunity_score" if basis == "rate" else "opportunity_adults"
+    out = out.sort_values(sort_col, ascending=False).reset_index(drop=True)
+    out["rank"] = out["rank_rate"] if basis == "rate" else out["rank_lives"]
+    out["ranking_basis"] = basis
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -107,13 +177,28 @@ def build_indicator_state_year(result: TransformResult) -> pd.DataFrame:
         mart[states].groupby(["year", "indicator_id"])["value"].transform(_percentile_rank)
     )
 
+    # --- market sizing -----------------------------------------------------
+    # A prevalence rate answers "how concentrated is this?"; multiplying by the
+    # adult population answers "how many people is that?". Both are needed --
+    # they rank states differently, which is the point.
+    mart = population.attach(mart)
+    pop = mart["adult_population"].astype("Float64")
+    # Only prevalence indicators convert to a headcount. The care-gap
+    # indicators are a share of the diagnosed, not of the population, so
+    # multiplying them by population would invent people.
+    mart["affected_adults"] = (
+        (mart["value"].astype("Float64") / 100.0 * pop)
+        .where(mart["measure_role"].eq("burden"))
+    )
+
     keep = [
         "year", "location_id", "location_abbr", "location_name", "geo_level",
         "census_region", "is_addressable_market", "latitude", "longitude",
         "indicator_id", "pillar", "short_label", "polarity", "measure_role",
         "question", "measure_type_id", "measure_type", "value", "ci_low",
         "ci_high", "ci_width", "is_low_precision", "national_value",
-        "delta_vs_national", "state_percentile",
+        "delta_vs_national", "state_percentile", "adult_population",
+        "affected_adults",
     ]
     out = mart[keep].sort_values(["year", "location_abbr", "indicator_id"]).reset_index(drop=True)
     logger.info("mart_indicator_state_year: %s rows", len(out))
@@ -306,12 +391,42 @@ def build_state_scorecard(
         name="untreated_pct"
     )
 
+    # --- market size: how many people, not just what share -----------------
+    latest = indicator_mart[
+        indicator_mart["is_addressable_market"].fillna(False)
+        & indicator_mart["year"].eq(latest_year)
+    ]
+    burden_latest = latest[latest["measure_role"].eq("burden")]
+    # Caseload counts condition-cases, not unique people: an adult with both
+    # diabetes and hypertension appears twice. That is the correct unit here,
+    # because programmes are sold and delivered per condition -- but it must
+    # never be described as "people", and the app labels it accordingly.
+    caseload = (
+        burden_latest.groupby("location_id")["affected_adults"]
+        .sum(min_count=1).reset_index(name="condition_caseload")
+    )
+    # The care-gap indicators measure medication among people with high blood
+    # pressure or high cholesterol, so the untreated headcount is scoped to the
+    # cardiovascular caseload rather than to every tracked condition.
+    cardio = (
+        burden_latest[burden_latest["pillar"].eq(CARDIO_PILLAR)]
+        .groupby("location_id")["affected_adults"]
+        .sum(min_count=1).reset_index(name="cardio_caseload")
+    )
+    pop = (
+        latest.groupby("location_id")["adult_population"]
+        .max().reset_index(name="adult_population")
+    )
+
     score = (
         base.drop(columns=["pillar"])
         .merge(trend, on="location_id", how="left")
         .merge(prev_trend, on="location_id", how="left")
         .merge(equity, on="location_id", how="left")
         .merge(care_gap, on="location_id", how="left")
+        .merge(pop, on="location_id", how="left")
+        .merge(caseload, on="location_id", how="left")
+        .merge(cardio, on="location_id", how="left")
     )
 
     # --- component percentile ranks (all oriented "higher = more opportunity")
@@ -338,9 +453,8 @@ def build_state_scorecard(
     score["opportunity_score"] = (weighted.sum(axis=1) / weight_mass.replace(0, np.nan)).round(1)
     score["score_components_available"] = sum(score[c].notna() for c in components.values())
 
-    score = score.sort_values("opportunity_score", ascending=False).reset_index(drop=True)
-    score["rank"] = score["opportunity_score"].rank(ascending=False, method="min").astype("Int64")
     score["year"] = latest_year
+    score = apply_rankings(score)
     logger.info("mart_state_scorecard: %s states for %s", len(score), latest_year)
     return score
 
@@ -353,12 +467,18 @@ SCORE_COMPONENTS: dict[str, str] = {
 }
 
 
-def rescore(scorecard: pd.DataFrame, weights: dict[str, float]) -> pd.DataFrame:
+def rescore(
+    scorecard: pd.DataFrame,
+    weights: dict[str, float],
+    basis: str | None = None,
+) -> pd.DataFrame:
     """Recompute the Opportunity Score under different weights.
 
     The component percentile ranks are persisted, so re-weighting is a cheap
     reshuffle -- this is what lets the app expose the weights as sliders and
     keep the scoring logic honest and inspectable rather than a black box.
+    Rankings and the derived headcounts are rebuilt from the new score so the
+    two views can never drift apart.
     """
     out = scorecard.copy()
     if out.empty:
@@ -371,9 +491,7 @@ def rescore(scorecard: pd.DataFrame, weights: dict[str, float]) -> pd.DataFrame:
         weighted[col] = out[col].fillna(0.0) * w * present
         weight_mass += w * present
     out["opportunity_score"] = (weighted.sum(axis=1) / weight_mass.replace(0, np.nan)).round(1)
-    out = out.sort_values("opportunity_score", ascending=False).reset_index(drop=True)
-    out["rank"] = out["opportunity_score"].rank(ascending=False, method="min").astype("Int64")
-    return out
+    return apply_rankings(out, basis)
 
 
 # ---------------------------------------------------------------------------
@@ -411,4 +529,29 @@ def build_all(result: TransformResult) -> tuple[dict[str, pd.DataFrame], dict[st
             "No %s data for %s -- excluded from the scorecard.",
             latest_year, ", ".join(stats["states_excluded_from_scorecard"]),
         )
+
+    # Market sizing provenance. The denominator year is recorded next to the
+    # scoring year because they can drift apart when either source releases a
+    # new vintage, and a headcount built from mismatched years is misleading.
+    stats["population_year"] = config.POPULATION_YEAR
+    stats["population_source"] = config.POPULATION_SOURCE
+    stats["population_year_matches_scoring_year"] = (
+        config.POPULATION_YEAR == latest_year
+    )
+    if not scorecard.empty:
+        no_pop = scorecard.loc[scorecard["adult_population"].isna(), "location_abbr"]
+        stats["states_missing_population"] = sorted(no_pop)
+        stats["total_condition_caseload"] = int(
+            scorecard["condition_caseload"].fillna(0).sum()
+        )
+        stats["ranking_basis_default"] = config.DEFAULT_RANKING_BASIS
+        # The headline result of adding population: the two lenses disagree.
+        shifted = scorecard["rank_shift"].abs()
+        stats["max_rank_shift"] = int(shifted.max()) if shifted.notna().any() else 0
+        stats["states_shifting_10_plus_ranks"] = int((shifted >= 10).sum())
+        if stats["states_missing_population"]:
+            logger.warning(
+                "No population reference for %s -- headcounts unavailable there.",
+                ", ".join(stats["states_missing_population"]),
+            )
     return marts, stats

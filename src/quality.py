@@ -23,7 +23,7 @@ from typing import Any, Callable
 import numpy as np
 import pandas as pd
 
-from . import config
+from . import config, population
 from .transform import FACT_NATURAL_KEY, TransformResult
 
 logger = logging.getLogger(__name__)
@@ -311,6 +311,34 @@ def check_freshness(fact: pd.DataFrame) -> CheckResult:
     )
 
 
+def check_population_reference(dim_location: pd.DataFrame) -> CheckResult:
+    """Every addressable state needs a denominator, or its headcount is silently absent.
+
+    ERROR rather than WARNING: a missing population row does not produce a wrong
+    number, it produces a blank one, and a blank in a market-size table reads as
+    "small market" to anyone skimming it.
+    """
+    states = dim_location[dim_location["is_addressable_market"]]
+    try:
+        pop = population.load_adult_population()
+    except population.PopulationReferenceError as exc:
+        return CheckResult(
+            "DQ15", "Population reference coverage", "completeness", ERROR, FAIL,
+            len(states), len(states), str(exc),
+        )
+    have = set(pop["location_id"])
+    missing = sorted(set(states["location_id"]) - have)
+    return CheckResult(
+        "DQ15", "Population reference coverage", "completeness", ERROR,
+        PASS if not missing else FAIL, len(states), len(missing),
+        f"All {len(states)} addressable states have a {config.POPULATION_YEAR} "
+        "adult-population denominator."
+        if not missing
+        else f"{len(missing)} addressable states have no population row: {missing}. "
+        "Re-run scripts/refresh_population.py.",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
@@ -331,6 +359,7 @@ def run_all_checks(result: TransformResult, extract_stats: dict[str, Any]) -> li
         lambda: check_stratum_drift(fact, result.dim_stratum),
         lambda: check_outliers(fact),
         lambda: check_freshness(fact),
+        lambda: check_population_reference(result.dim_location),
     ]
 
     results: list[CheckResult] = []

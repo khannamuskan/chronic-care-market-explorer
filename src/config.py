@@ -22,6 +22,12 @@ LOG_DIR = PROJECT_ROOT / "logs"
 for _d in (RAW_DIR, PROCESSED_DIR, LOG_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
+# Reference data is checked in, unlike anything under data/. It is a small,
+# slow-moving denominator that must be reviewable in a diff rather than
+# re-fetched (and silently changed) on every run.
+REFERENCE_DIR = PROJECT_ROOT / "reference"
+POPULATION_REFERENCE_PATH = REFERENCE_DIR / "state_adult_population.csv"
+
 DUCKDB_PATH = PROCESSED_DIR / "warehouse.duckdb"
 RUN_MANIFEST_PATH = PROCESSED_DIR / "run_manifest.json"
 DQ_SUMMARY_PATH = PROCESSED_DIR / "dq_summary.json"
@@ -135,3 +141,21 @@ SCORE_WEIGHTS: dict[str, float] = {
 }
 
 TREND_WINDOW_YEARS = 5
+
+# --------------------------------------------------------------------------
+# Market sizing
+# --------------------------------------------------------------------------
+# Vintage of the committed population reference. Kept explicit so a mismatch
+# between the scoring year and the denominator year is visible rather than
+# assumed -- analytics records both and the app reports the gap.
+POPULATION_YEAR = 2023
+POPULATION_SOURCE = (
+    "U.S. Census Bureau, Population Estimates Program, Vintage 2024 "
+    "(civilian population by single year of age, 18+)"
+)
+
+# Two defensible ways to rank a market, and they disagree:
+#   rate  -- where chronic disease is most concentrated (efficiency)
+#   lives -- where the most affected people actually live (volume)
+RANKING_BASES = ("rate", "lives")
+DEFAULT_RANKING_BASIS = "rate"

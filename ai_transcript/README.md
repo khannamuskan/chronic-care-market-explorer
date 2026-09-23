@@ -71,6 +71,9 @@ Concrete defects found by running the code, not by reading it:
 | Scorecard silently ranked 49 states, not 51 | Sanity-checking mart output against expectations | Traced to genuinely absent 2023 BRFSS data for KY and PA; changed the design to **name excluded states in the UI** |
 | Deprecated Streamlit `use_container_width` | Headless `AppTest` render surfaced the warnings | Migrated to the current `width=` API |
 | Non-contiguous DQ check IDs (DQ11/DQ12 skipped) | Reviewing ETL log output | Renumbered so the DQ table reads cleanly |
+| Market sizing used **total** state population | Reviewing the proposed denominator against the source's own universe | BRFSS surveys adults only; switched to civilian 18+ population, which removed a ~22% overstatement |
+| Census API returned "Missing Key" HTML with HTTP 200 | Probing the endpoint before building on it | The API now requires registration, which would have broken the keyless guarantee; switched to Census's static published CSVs |
+| `TypeError: Invalid value ... for dtype 'float64'` when writing headcounts | ETL run after adding the population join | Nullable `Float64` was being assigned into a numpy `float64` column; kept the whole computation in the nullable dtype |
 
 Validation was not assumed: the app was rendered headlessly with Streamlit's
 `AppTest` harness to prove all five tabs build with zero exceptions, and the

@@ -151,10 +151,17 @@ def test_a_raising_check_does_not_kill_the_run(modelled, extract_stats, monkeypa
     monkeypatch.setattr(quality, "check_outliers", boom)
     results = quality.run_all_checks(modelled, extract_stats)
     assert any("exception" in r.message for r in results)
-    assert len(results) == 14
+    # Exactly one placeholder for the broken check; every other check still ran
+    # and still reported under its own id.
+    assert sum(r.check_id == "DQ??" for r in results) == 1
+    real = [r.check_id for r in results if r.check_id != "DQ??"]
+    assert len(real) == len(set(real))
 
 
 def test_results_serialise_to_a_frame(modelled, extract_stats):
     frame = quality.to_frame(quality.run_all_checks(modelled, extract_stats))
     assert {"check_id", "severity", "status", "fail_rate"} <= set(frame.columns)
-    assert len(frame) == 14
+    # Ids must stay contiguous DQ01..DQnn. Asserting the pattern rather than a
+    # magic count means adding a check can never silently leave a gap.
+    ids = frame["check_id"].tolist()
+    assert ids == [f"DQ{i:02d}" for i in range(1, len(ids) + 1)]
