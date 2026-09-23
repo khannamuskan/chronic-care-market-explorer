@@ -108,6 +108,7 @@ Several AI-proposed approaches were rejected or reworked:
   all-null columns from its payload, thousands separators in numeric strings,
   protective-indicator orientation in equity gaps, and fast-fail on 4xx versus
   retry on 429/5xx.
-- The README's limitations section was written honestly — including the
-  admission that the absence of population weighting is the single biggest gap
-  in the analysis.
+- The README's limitations section was written honestly. It named the absence of
+  population weighting as the single biggest gap in the analysis, and that
+  admission is what drove the market-sizing work that later closed it; the
+  remaining limitations are stated with the same candour.
