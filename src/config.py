@@ -43,7 +43,7 @@ API_MAX_RETRIES = 4
 API_BACKOFF_SECONDS = 2.0
 API_TIMEOUT_SECONDS = 60
 # Socrata is happier with an explicit UA; it 403s some default client agents.
-API_USER_AGENT = "dario-chronic-care-explorer/1.0 (assignment; python-requests)"
+API_USER_AGENT = "chronic-care-market-explorer/1.0 (assignment; python-requests)"
 # Optional: a free Socrata app token raises rate limits. Not required.
 APP_TOKEN_ENV_VAR = "SOCRATA_APP_TOKEN"
 
